@@ -32,7 +32,7 @@ CREATE TABLE Categorie (
 
 CREATE TABLE Produit (
     id_produit INT AUTO_INCREMENT PRIMARY KEY,
-    reference INT NOT NULL,
+    ref VARCHAR(50) NOT NULL,
     quantite INT NOT NULL,
     prix_unitaire INT NOT NULL,
     id_f INT NOT NULL,
