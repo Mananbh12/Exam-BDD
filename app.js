@@ -189,6 +189,55 @@ initDB().then(connection => {
         res.json({ message: 'Ligne_Commande supprimé avec succès' });
     });
 
+    // lister les commandes avec leurs lignes
+    app.get('/DetailCommandeLignes', async (req, res) => {
+        const [result] = await connection.query(`
+            SELECT Commande.*, Ligne_Commande.*, Produit.*
+            FROM Commande
+            JOIN Ligne_Commande ON Commande.id_commande = Ligne_Commande.id_c
+            JOIN Produit ON Ligne_Commande.id_p = Produit.id_produit
+        `);
+            res.json(result);
+        });
+    
+    
+    app.get('/ListeClientCommandes', async (req, res) => {
+        const [result] = await connection.query(`
+            SELECT Client.*, Commande.*
+            FROM Commande
+            JOIN Client ON Commande.id_c = Client.id_client;
+        `);
+            res.json(result);
+        });
+
+    app.get('/ListeProduitCategorie', async (req, res) => {
+        const [result] = await connection.query(`
+            SELECT Categorie.*, Produit.*
+            FROM Produit
+            JOIN Categorie ON Produit.id_c = Categorie.id_categorie;
+        `);
+            res.json(result);
+        });
+
+    app.get('/ListeProduitFournisseur', async (req, res) => {
+        const [result] = await connection.query(`
+            SELECT Fournisseur.*, Produit.*
+            FROM Produit
+            JOIN Fournisseur ON Produit.id_f = Fournisseur.id_fournisseur;
+        `);
+            res.json(result);
+        });
+
+    app.get('/client/:id/commandes', async (req, res) => {
+        const clientId = req.params.id;
+
+            const query = 'SELECT * FROM Commande WHERE id_c = ' + clientId; // Injection possible ici et absence de validation des champs envoyés
+
+            const [result] = await connection.query(query);
+            
+    });
+
+
 
 
     const PORT = 3000;
