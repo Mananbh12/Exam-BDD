@@ -19,16 +19,17 @@ INSERT INTO Fournisseur (nom) VALUES
 ('Loewe');
 
 -- Insertion de produits
-INSERT INTO Produit (ref, quantite, prix_unitaire, id_f, id_c) VALUES 
+INSERT INTO Produit (ref, quantite_stock, prix_unitaire, id_f, id_c) VALUES 
 ('TS1001', 10, 30, 1, 1),
 ('PL2002', 5, 50, 2, 2),
 ('VS3003', 3, 120, 3, 3);
 
 -- Insertion de commandes
-INSERT INTO Commande (prix_total, id_c) VALUES 
-(300, 1),
-(250, 2),
-(360, 3);
+INSERT INTO Commande (prix_total, date_commande, id_c) VALUES 
+(300, CURDATE(), 1),
+(250, CURDATE(), 2),
+(360, CURDATE(), 3);
+
 
 INSERT INTO Ligne_Commande (id_p, id_c)
 VALUES
@@ -37,5 +38,6 @@ VALUES
     (3, 2),  -- Produit 3 associé à Commande 2
     (3, 3);  -- Produit 3 associé à Commande 3 (remplaçant le produit 4 par un produit existant)
 
+SELECT * FROM Commande WHERE date_commande BETWEEN '2025-01-01' AND '2025-12-31';
 
 

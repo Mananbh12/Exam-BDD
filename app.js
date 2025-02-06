@@ -115,9 +115,9 @@ initDB().then(connection => {
     });
 
     app.post('/Produit', async (req, res) => {
-        const {ref, quantite, prix_unitaire, id_f, id_c} = req.body;
-        const sql = 'INSERT INTO Produit (ref, quantite, prix_unitaire, id_f, id_c) VALUES (?, ?, ?, ?, ?)';
-        await connection.query(sql, [ref, quantite, prix_unitaire, id_f, id_c]);
+        const {ref, quantite_stock, prix_unitaire, id_f, id_c} = req.body;
+        const sql = 'INSERT INTO Produit (ref, quantite_stock, prix_unitaire, id_f, id_c) VALUES (?, ?, ?, ?, ?)';
+        await connection.query(sql, [ref, quantite_stock, prix_unitaire, id_f, id_c]);
         res.status(201).json({ message: 'Produit ajouté avec succès' });
     });
 
@@ -128,9 +128,9 @@ initDB().then(connection => {
 
     app.put('/Produit/:id', async (req, res) => {
         const {nom} = req.body;
-        const sql = `UPDATE Produit ref= ?, quantite= ?, prix_unitaire= ?, id_f= ?, id_c= ?
+        const sql = `UPDATE Produit ref= ?, quantite_stock= ?, prix_unitaire= ?, id_f= ?, id_c= ?
                  WHERE id = ?`
-        await connection.query(sql, [ref, quantite, prix_unitaire, id_f, id_c, produit_id]);
+        await connection.query(sql, [ref, quantite_stock, prix_unitaire, id_f, id_c, produit_id]);
         res.json({ message: 'Produit mis à jour avec succès' });
     });
 
@@ -165,11 +165,43 @@ initDB().then(connection => {
     });
 
     app.post('/Ligne_Commande', async (req, res) => {
-        const {id_p, id_c} = req.body;
-        const sql = 'INSERT INTO Ligne_Commande (id_p, id_c) VALUES (?, ?)';
-        await connection.query(sql, [id_p, id_c]);
-        res.status(201).json({ message: 'Ligne_Commande ajoutée avec succès' });
+        try {
+            const { id_p, id_c, quantite } = req.body;
+    
+            if (!id_p || !id_c || !quantite) {
+                return res.status(400).json({ error: "Les champs 'id_p', 'id_c' et 'quantite' sont requis." });
+            }
+    
+            // Vérifier si le stock est suffisant
+            const stockQuery = `SELECT quantite_stock FROM Produit WHERE id_produit = ?`;
+            const [stockResult] = await connection.query(stockQuery, [id_p]);
+    
+            if (stockResult.length === 0) {
+                return res.status(404).json({ error: "Produit non trouvé." });
+            }
+    
+            const stockDispo = stockResult[0].quantite;
+            
+            if (stockDispo < quantite) {
+                return res.status(400).json({ error: "Stock insuffisant pour ce produit." });
+            }
+    
+            // Ajouter la ligne de commande
+            const insertQuery = `INSERT INTO Ligne_Commande (id_p, id_c, quantite) VALUES (?, ?, ?)`;
+            await connection.query(insertQuery, [id_p, id_c, quantite]);
+    
+            // Décrémenter le stock du produit
+            const updateStockQuery = `UPDATE Produit SET quantite_stock = quantite_stock - ? WHERE id_produit = ?`;
+            await connection.query(updateStockQuery, [quantite, id_p]);
+    
+            res.status(201).json({ message: 'Commande ajoutée avec succès, stock mis à jour.' });
+    
+        } catch (error) {
+            res.status(500).json({ error: "Erreur serveur", details: error.message });
+        }
     });
+    
+    
 
     app.get('/Ligne_Commande', async (req, res) => {
         const [result] = await connection.query('SELECT * FROM Ligne_Commande');
@@ -177,17 +209,60 @@ initDB().then(connection => {
     });
 
     app.put('/Ligne_Commande/:id', async (req, res) => {
-        const {id_p, id_c} = req.body;
-        const sql = `UPDATE Ligne_Commande prix_total=?, id_c=?
-                 WHERE id = ?`
-        await connection.query(sql, [id_p, id_c, id_ligne]);
-        res.json({ message: 'Ligne_Commande mis à jour avec succès' });
+        try {
+            const { id_p, id_c, quantite } = req.body;
+            const id_ligne = req.params.id;
+    
+            if (!id_p || !id_c || !quantite) {
+                return res.status(400).json({ error: "Les champs 'id_p', 'id_c' et 'quantite' sont requis." });
+            }
+    
+            const sql = `UPDATE Ligne_Commande 
+                         SET id_p = ?, id_c = ?, quantite = ?
+                         WHERE id_ligne = ?`;
+            const [result] = await connection.query(sql, [id_p, id_c, quantite, id_ligne]);
+    
+            if (result.affectedRows === 0) {
+                return res.status(404).json({ error: "Aucune Ligne_Commande trouvée avec cet ID." });
+            }
+    
+            res.json({ message: 'Ligne_Commande mise à jour avec succès' });
+    
+        } catch (error) {
+            res.status(500).json({ error: "Erreur serveur", details: error.message });
+        }
     });
+    
 
     app.delete('/Ligne_Commande/:id', async (req, res) => {
-        await connection.query('DELETE FROM Ligne_Commande WHERE id_ligne = ?', [req.params.id]);
-        res.json({ message: 'Ligne_Commande supprimé avec succès' });
+        try {
+            const id_ligne = req.params.id;
+    
+            // Récupérer les informations de la ligne de commande
+            const getCommandeQuery = `SELECT id_p, quantite FROM Ligne_Commande WHERE id_ligne = ?`;
+            const [commandeResult] = await connection.query(getCommandeQuery, [id_ligne]);
+    
+            if (commandeResult.length === 0) {
+                return res.status(404).json({ error: "Ligne de commande non trouvée." });
+            }
+    
+            const { id_p, quantite } = commandeResult[0];
+    
+            // Supprimer la ligne de commande
+            const deleteQuery = `DELETE FROM Ligne_Commande WHERE id_ligne = ?`;
+            await connection.query(deleteQuery, [id_ligne]);
+    
+            // Réapprovisionner le stock du produit
+            const updateStockQuery = `UPDATE Produit SET quantite_stock = quantite_stock + ? WHERE id_produit = ?`;
+            await connection.query(updateStockQuery, [quantite, id_p]);
+    
+            res.json({ message: "Commande annulée et stock restauré." });
+    
+        } catch (error) {
+            res.status(500).json({ error: "Erreur serveur", details: error.message });
+        }
     });
+    
 
     // lister les commandes avec leurs lignes
     app.get('/DetailCommandeLignes', async (req, res) => {
@@ -228,14 +303,164 @@ initDB().then(connection => {
             res.json(result);
         });
 
-    app.get('/client/:id/commandes', async (req, res) => {
-        const clientId = req.params.id;
+        // Fonctionnalités avancées de la V2
 
-            const query = 'SELECT * FROM Commande WHERE id_c = ' + clientId; // Injection possible ici et absence de validation des champs envoyés
-
-            const [result] = await connection.query(query);
+    app.get('/commande_annee', async (req, res) => {
+        try {
+            const { start, end } = req.query; 
+    
+            if (!start || !end) {
+                return res.status(400).json({ error: "Les paramètres 'start' et 'end' sont requis." });
+            }
+    
+            const query = `
+                SELECT * FROM Commande 
+                WHERE date_commande BETWEEN ? AND ?
+            `;
+    
+            const [result] = await connection.query(query, [start, end]); 
+            res.json(result);
             
+        } catch (error) {
+            res.status(500).json({ error: "Erreur serveur", details: error.message });
+        }
     });
+
+    app.get('/client/:id/commandes', async (req, res) => {
+        try {
+            const clientId = req.params.id;
+            
+            if (isNaN(clientId)) {
+                return res.status(400).json({ error: "L'ID du client doit être un nombre." });
+            }
+    
+            const query = 'SELECT * FROM Commande WHERE id_c = ?';
+            const [result] = await connection.execute(query, [clientId]);
+    
+            res.json(result);
+        } catch (error) {
+            res.status(500).json({ error: "Erreur serveur", details: error.message });
+        }
+    });
+    
+    
+
+    app.get('/produit/:id/commandes', async (req, res) => {
+        try {
+            const produitId = req.params.id;
+    
+            if (isNaN(produitId)) {
+                return res.status(400).json({ error: "L'ID du produit doit être un nombre." });
+            }
+    
+            const query = `
+                SELECT Commande.* 
+                FROM Commande
+                JOIN Ligne_Commande ON Commande.id_commande = Ligne_Commande.id_c
+                WHERE Ligne_Commande.id_p = ?
+            `;
+    
+            const [result] = await connection.execute(query, [produitId]);
+    
+            res.json(result);
+    
+        } catch (error) {
+            console.error("Erreur SQL :", error);
+            res.status(500).json({ error: "Erreur serveur", details: error.message });
+        }
+    });
+
+    //bien qu'il y ai de la concaténation, l'utilisation de requête paramétrées rend impossible l'injection
+
+    app.get('/recherche', async (req, res) => {
+        try {
+            const { id_client, start, end, statut, id_produit } = req.query;
+    
+            let query = `
+                SELECT Commande.* FROM Commande
+                LEFT JOIN Ligne_Commande ON Commande.id_commande = Ligne_Commande.id_c
+                LEFT JOIN Produit ON Ligne_Commande.id_p = Produit.id_produit
+                WHERE 1=1
+            `;
+            
+            const params = [];
+    
+            if (id_client) {
+                query += " AND Commande.id_c = ?";
+                params.push(id_client);
+            }
+    
+            if (start && end) {
+                query += " AND Commande.date_commande BETWEEN ? AND ?";
+                params.push(start, end);
+            }
+    
+            if (statut) {
+                query += " AND Commande.statut = ?";
+                params.push(statut);
+            }
+    
+            if (id_produit) {
+                query += " AND Produit.id_produit = ?";
+                params.push(id_produit);
+            }
+    
+            const [result] = await connection.execute(query, params);
+    
+            res.json(result);
+    
+        } catch (error) {
+            console.error("Erreur SQL :", error);
+            res.status(500).json({ error: "Erreur serveur", details: error.message });
+        }
+    });
+    
+    app.get('/stats/produits-populaires', async (req, res) => {
+    try {
+        const query = `
+            SELECT 
+                Produit.id_produit, 
+                Produit.ref, 
+                COUNT(Ligne_Commande.id_p) AS nombre_vendus
+            FROM Ligne_Commande
+            JOIN Produit ON Ligne_Commande.id_p = Produit.id_produit
+            GROUP BY Produit.id_produit, Produit.ref
+            ORDER BY nombre_vendus DESC
+            LIMIT 5;
+        `;
+
+        const [result] = await connection.execute(query);
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ error: "Erreur serveur", details: error.message });
+    }
+    });
+
+
+    app.get('/stats/ventes', async (req, res) => {
+        try {
+            const { start, end } = req.query;
+    
+            if (!start || !end) {
+                return res.status(400).json({ error: "Les paramètres 'start' et 'end' sont requis." });
+            }
+    
+            const query = `
+                SELECT SUM(prix_total) AS total_ventes
+                FROM Commande
+                WHERE date_commande BETWEEN ? AND ?;
+            `;
+    
+            const [result] = await connection.execute(query, [start, end]);
+            res.json(result[0]); // On retourne un objet { total_ventes: X }
+    
+        } catch (error) {
+            res.status(500).json({ error: "Erreur serveur", details: error.message });
+        }
+    });
+    
+
+    
 
 
 
