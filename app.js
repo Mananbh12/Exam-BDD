@@ -172,7 +172,6 @@ initDB().then(connection => {
                 return res.status(400).json({ error: "Les champs 'id_p', 'id_c' et 'quantite' sont requis." });
             }
     
-            // Vérifier si le stock est suffisant
             const stockQuery = `SELECT quantite_stock FROM Produit WHERE id_produit = ?`;
             const [stockResult] = await connection.query(stockQuery, [id_p]);
     
@@ -186,11 +185,9 @@ initDB().then(connection => {
                 return res.status(400).json({ error: "Stock insuffisant pour ce produit." });
             }
     
-            // Ajouter la ligne de commande
             const insertQuery = `INSERT INTO Ligne_Commande (id_p, id_c, quantite) VALUES (?, ?, ?)`;
             await connection.query(insertQuery, [id_p, id_c, quantite]);
     
-            // Décrémenter le stock du produit
             const updateStockQuery = `UPDATE Produit SET quantite_stock = quantite_stock - ? WHERE id_produit = ?`;
             await connection.query(updateStockQuery, [quantite, id_p]);
     
@@ -238,7 +235,6 @@ initDB().then(connection => {
         try {
             const id_ligne = req.params.id;
     
-            // Récupérer les informations de la ligne de commande
             const getCommandeQuery = `SELECT id_p, quantite FROM Ligne_Commande WHERE id_ligne = ?`;
             const [commandeResult] = await connection.query(getCommandeQuery, [id_ligne]);
     
@@ -248,11 +244,9 @@ initDB().then(connection => {
     
             const { id_p, quantite } = commandeResult[0];
     
-            // Supprimer la ligne de commande
             const deleteQuery = `DELETE FROM Ligne_Commande WHERE id_ligne = ?`;
             await connection.query(deleteQuery, [id_ligne]);
     
-            // Réapprovisionner le stock du produit
             const updateStockQuery = `UPDATE Produit SET quantite_stock = quantite_stock + ? WHERE id_produit = ?`;
             await connection.query(updateStockQuery, [quantite, id_p]);
     
@@ -370,7 +364,7 @@ initDB().then(connection => {
         }
     });
 
-    //bien qu'il y ai de la concaténation, l'utilisation de requête paramétrées rend impossible l'injection
+    
 
     app.get('/recherche', async (req, res) => {
         try {
@@ -384,8 +378,10 @@ initDB().then(connection => {
             `;
             
             const params = [];
-    
-            if (id_client) {
+
+            //bien qu'il y ai de la concaténation, l'utilisation de requête paramétrées rend impossible l'injection
+
+            if (id_client) {        
                 query += " AND Commande.id_c = ?";
                 params.push(id_client);
             }
@@ -452,17 +448,25 @@ initDB().then(connection => {
             `;
     
             const [result] = await connection.execute(query, [start, end]);
-            res.json(result[0]); // On retourne un objet { total_ventes: X }
+            res.json(result[0]); 
     
         } catch (error) {
             res.status(500).json({ error: "Erreur serveur", details: error.message });
         }
     });
     
+    app.get('/produits/stock-faible', async (req, res) => {
+    try {
+        const seuil = parseInt(req.query.seuil, 10) || 10; // Défaut : 10 si aucun seuil n'est fourni
 
-    
+        const query = `SELECT * FROM Produit WHERE quantite_stock <= ?`;
+        const [result] = await connection.query(query, [seuil]);
 
-
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ error: "Erreur serveur", details: error.message });
+    }
+});
 
 
     const PORT = 3000;
